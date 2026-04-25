@@ -7,13 +7,13 @@ from book_service.config import settings
 _PRIVATE_KEY_CACHE = None
 _PUBLIC_KEY_CACHE = None
 
-def _load_private_key() -> str:
+async def _load_private_key() -> str:
     global _PRIVATE_KEY_CACHE
     if _PRIVATE_KEY_CACHE is None:
         _PRIVATE_KEY_CACHE = settings.auth.private_key_path.read_text()
     return _PRIVATE_KEY_CACHE
 
-def _load_public_key() -> str:
+async def _load_public_key() -> str:
     global _PUBLIC_KEY_CACHE
     if _PUBLIC_KEY_CACHE is None:
         _PUBLIC_KEY_CACHE = settings.auth.public_key_path.read_text()
