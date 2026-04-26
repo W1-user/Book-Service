@@ -9,7 +9,7 @@ TOKEN_TYPE_FIELD = "type"
 ACCESS_TOKEN_FIELD = "access"
 REFRESH_TOKEN_FIELD = "refresh"
 
-async def create_jwt(
+def create_jwt(
     token_type: str,
     payload: dict,
     expire_minutes: int = settings.auth.expire_access_token,
@@ -19,29 +19,29 @@ async def create_jwt(
     jwt_payload.update(
         payload
     )
-    return await auth.encode(
+    return auth.encode(
         payload=jwt_payload,
         expire_access_token=expire_minutes,
         expire_timedelta=expire_timedelta,
     )
 
-async def create_access_token(user: UserSchemas):
+def create_access_token(user: UserSchemas):
     jwt_payload = {
         "sub": user.username,
         "username": user.username,
         "email": user.email,
     }
-    return await create_jwt(
+    return create_jwt(
         token_type=ACCESS_TOKEN_FIELD,
         payload=jwt_payload,
         expire_minutes=settings.auth.expire_access_token,
     )
 
-async def create_refresh_token(user: UserSchemas):
+def create_refresh_token(user: UserSchemas):
     jwt_payload = {
         "sub": user.username,
     }
-    return await create_jwt(
+    return create_jwt(
         token_type=REFRESH_TOKEN_FIELD,
         payload=jwt_payload,
         expire_timedelta=timedelta(days=settings.auth.expire_refresh_token),
