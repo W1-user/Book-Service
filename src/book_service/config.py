@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 ENGINE = os.getenv("SQLALCHEMY_URL")
-
 BASEDIR = Path(__file__).parent.parent
 
 class DBSettings(BaseModel):
