@@ -7,29 +7,34 @@ from fastapi import (
 )
 from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from jwt import InvalidTokenError
 
+from book_service.auth.dependencies import (
+    UNAUTHED_EXCEPT,
+    FORBIDDEN_EXCEPT,
+    BAD_EXCEPT,
+    oauth2_schemas,
+    http_bearer,
+)
 from book_service.auth import auth
 from book_service.models.user import User
 from book_service.schemas.users import UserSchemas, UserCreate, TokenInfo
-from book_service.auth.helpers import create_access_token, create_refresh_token
 from book_service.database import get_db 
+from book_service.auth.validation import get_user_auth_for_refresh
 
-UNAUTHED_EXCEPT = HTTPException(
-    status_code=status.HTTP_401_UNAUTHORIZED,
-    detail='User not found!'
+from book_service.auth.helpers import (
+    TOKEN_TYPE_FIELD,
+    ACCESS_TOKEN_FIELD,
+    REFRESH_TOKEN_FIELD,
+    create_access_token,
+    create_refresh_token,
 )
 
-FORBIDDEN_EXCEPT = HTTPException(
-    status_code=status.HTTP_403_FORBIDDEN,
-    detail="Error!"
+router = APIRouter(
+    prefix="/Authorization", 
+    tags=["Authorization"],
+    dependencies=[Depends(http_bearer)]
 )
-
-BAD_EXCEPT = HTTPException(
-    status_code=status.HTTP_400_BAD_REQUEST,
-    detail="User est"
-)
-
-router = APIRouter(prefix="/Authorization", tags=["Authorization"])
 
 async def get_user(username: str = Form(), password: str = Form(), session: AsyncSession = Depends(get_db)):
     result = await session.execute(
@@ -38,16 +43,53 @@ async def get_user(username: str = Form(), password: str = Form(), session: Asyn
     user = result.scalar_one_or_none()
     if not user:
         raise UNAUTHED_EXCEPT
-    if not await auth.validate_hash(password=password, hashed_pwd=user.password_hash):
+    if not auth.verify_password(password, user.password_hash):
         raise UNAUTHED_EXCEPT
     if not user.is_activity:
         raise FORBIDDEN_EXCEPT
     return UserSchemas.model_validate(user)
 
+async def get_payload_from_token(
+        token: str = Depends(oauth2_schemas)
+) -> dict:
+    try:
+        payload = auth.decode(token)
+    except InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token!"
+        )
+    return payload
+
+async def get_user_payload(
+        payload: dict = Depends(get_payload_from_token),
+        session: AsyncSession = Depends(get_db)
+) -> UserSchemas:
+    token_type = payload.get(TOKEN_TYPE_FIELD)
+    if token_type != ACCESS_TOKEN_FIELD:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token type - {token_type!r} except {ACCESS_TOKEN_FIELD!r}"
+        )
+    username: str | None = payload.get("sub")
+    result = await session.execute(
+        select(User).where(User.username == username)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise UNAUTHED_EXCEPT
+    
+    return UserSchemas.model_validate(user)
+
+async def get_check_user_activity(user: UserSchemas = Depends(get_user_payload)):
+    if not user.is_activity:
+        raise FORBIDDEN_EXCEPT
+    return user
+
 @router.post("/login", response_model=TokenInfo)
 async def login_user(user: UserSchemas = Depends(get_user)):
-    access_token = await create_access_token(user)
-    refres_token = await create_refresh_token(user)
+    access_token = create_access_token(user)
+    refres_token = create_refresh_token(user)
 
     return TokenInfo(
         access_token=access_token,
@@ -74,7 +116,7 @@ async def register_user(
     if email:
         raise BAD_EXCEPT
     
-    hashed_password = await auth.hashed_password(password=user_data.password)
+    hashed_password = auth.verify_password(password=user_data.password)
     new_user = User(
         username=user_data.username,
         email=user_data.email,
@@ -90,6 +132,17 @@ async def register_user(
 
     return UserSchemas.model_validate(new_user)
 
-# @router.get("/users/me")
-# async def getting_for_me(user: UserSchemas = Depends(...)):
-    # ...
+@router.post("/refresh", response_model=TokenInfo, response_model_exclude_none=True)
+async def get_refresh_token(user: UserSchemas = Depends(get_user_auth_for_refresh)):
+    access_token = create_access_token(user)
+    return TokenInfo(
+        access_token=access_token,
+    )
+
+@router.get("/users/me")
+def getting_for_me(user: UserSchemas = Depends(get_check_user_activity)):
+    return {
+        "username": user.username,
+        "email": user.email,
+        "is_activity": True,
+    }
