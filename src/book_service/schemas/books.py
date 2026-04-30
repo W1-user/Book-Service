@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 class BookCreate(BaseModel):
     title: Annotated[str, MinLen(3), MaxLen(100)]
     author: Annotated[str, MinLen(3), MaxLen(40)]
-    description: Optional[str] = Field()
+    description: Optional[str] = Field(None, min_length=100, max_length=1000)
     price: float = Field(gt=0, le=10000)
 
     isbn: Optional[str] = Field(None, pattern=r'^(97[89])?\d{9}[\dX]$')
@@ -17,15 +17,15 @@ class BookCreate(BaseModel):
     class Config:
         from_attributes = True
 
-    @field_validator
+    @field_validator("price")
     @classmethod
     def validate_price(cls, v: float) -> float:
         if v <= 0:
-            return ValueError("Price must be positive")
+            raise ValueError("Price must be positive")
         return round(v, 2)
 
 class BookResponse(BaseModel):
-    id: int
+    book_id: int
     title: str
     author: str
     description: Optional[str] = None
@@ -35,13 +35,13 @@ class BookResponse(BaseModel):
     publisher: Optional[str] = None
     year: Optional[int] = None
     is_popular: bool = Field(default=False)
-    created_at: Optional[datetime] = None
+    # created_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
 
 class BookBriefSchema(BaseModel):
-    id: int
+    book_id: int
     title: str
     author: str
     price: float
