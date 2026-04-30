@@ -32,7 +32,7 @@ from book_service.auth.helpers import (
 
 router = APIRouter(
     prefix="/Authorization", 
-    tags=["Authorization⚙️"],
+    tags=["Authorization ⚙️"],
     dependencies=[Depends(http_bearer)]
 )
 
