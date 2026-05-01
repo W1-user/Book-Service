@@ -9,6 +9,7 @@ TOKEN_TYPE_FIELD = "type"
 ACCESS_TOKEN_FIELD = "access"
 REFRESH_TOKEN_FIELD = "refresh"
 
+
 def create_jwt(
     token_type: str,
     payload: dict,
@@ -16,18 +17,17 @@ def create_jwt(
     expire_timedelta: timedelta | None = None,
 ) -> str:
     jwt_payload = {TOKEN_TYPE_FIELD: token_type}
-    jwt_payload.update(
-        payload
-    )
+    jwt_payload.update(payload)
     return auth.encode(
         payload=jwt_payload,
         expire_access_token=expire_minutes,
         expire_timedelta=expire_timedelta,
     )
 
+
 def create_access_token(user: UserSchemas):
     jwt_payload = {
-        "sub": user.username,
+        "sub": str(user.user_id),
         "username": user.username,
         "email": user.email,
     }
@@ -37,9 +37,10 @@ def create_access_token(user: UserSchemas):
         expire_minutes=settings.auth.expire_access_token,
     )
 
+
 def create_refresh_token(user: UserSchemas):
     jwt_payload = {
-        "sub": user.username,
+        "sub": str(user.user_id),
     }
     return create_jwt(
         token_type=REFRESH_TOKEN_FIELD,

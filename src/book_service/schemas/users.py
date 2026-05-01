@@ -2,6 +2,7 @@ from typing import Annotated
 from annotated_types import MinLen, MaxLen
 from pydantic import BaseModel, EmailStr
 
+
 class UserCreate(BaseModel):
     username: Annotated[str, MinLen(3), MaxLen(30)]
     email: EmailStr | None = None
@@ -12,7 +13,9 @@ class UserCreate(BaseModel):
     class Config:
         from_attributes = True
 
+
 class UserSchemas(BaseModel):
+    user_id: int
     username: Annotated[str, MinLen(3), MaxLen(30)]
     email: EmailStr | None = None
     is_activity: bool
@@ -20,8 +23,10 @@ class UserSchemas(BaseModel):
     class Config:
         from_attributes = True
 
+
 class UserResponse(UserSchemas):
     user_id: int
+
 
 class TokenInfo(BaseModel):
     access_token: str
