@@ -17,6 +17,8 @@ class User(Base):
     last_name: Mapped[str] = mapped_column(String(50))
 
     is_activity: Mapped[bool] = mapped_column(default=True)
+    is_moderator: Mapped[bool] = mapped_column(default=False)
+    is_admin: Mapped[bool] = mapped_column(default=False)
 
     def __repr__(self) -> str:
         return f"User - (user_id='{self.user_id}', username='{self.username}')"
