@@ -1,5 +1,8 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.redis import RedisBackend
+from redis.asyncio import Redis
 import uvicorn
 
 from book_service.config import settings
@@ -11,6 +14,12 @@ from book_service.database import Base, engine
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    redis = Redis(
+        host=settings.redis.host,
+        port=settings.redis.port,
+        db=settings.redis.db.cache,
+    )
+    FastAPICache.init(RedisBackend(redis), prefix=settings.cache.prefix)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield

@@ -27,10 +27,31 @@ class AuthSettings(BaseModel):
     expire_refresh_token: int = 30
 
 
+class RedisDB(BaseModel):
+    cache: int = 0
+
+
+class RedisConfig(BaseModel):
+    host: str = "localhost"
+    port: int = 6379
+    db: RedisDB = RedisDB()
+
+
+class CacheNamespace(BaseModel):
+    user_list: str = "user-list"
+
+
+class CacheConfig(BaseModel):
+    prefix: str = "fastapi-cache"
+    namespace: CacheNamespace = CacheNamespace()
+
+
 class Settings(BaseSettings):
     default_prefix: str = "/api/v1"
     db: DBSettings = DBSettings()
     auth: AuthSettings = AuthSettings()
+    redis: RedisConfig = RedisConfig()
+    cache: CacheConfig = CacheConfig()
 
 
 settings = Settings()
