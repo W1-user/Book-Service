@@ -11,7 +11,7 @@ BASEDIR = Path(__file__).parent.parent
 
 class DBSettings(BaseModel):
     engine: str = ENGINE
-    echo: bool = True
+    echo: bool = False
     expire_on_commit: bool = False
 
 
