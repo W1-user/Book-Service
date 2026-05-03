@@ -23,7 +23,14 @@ from book_service.schemas.users import UserSchemas, UserCreate, TokenInfo
 from book_service.database import get_db
 from book_service.auth.validation import get_user_auth_for_refresh
 
-from book_service.cache import _get_cached, invalidate_user_cache, CacheKeys, CacheTTL
+from book_service.cache import (
+    _get_cached,
+    CacheKeys,
+    CacheTTL,
+    CacheService,
+    invalidate_user_cache,
+    invalidate_users_list_cache,
+)
 
 from book_service.auth.helpers import (
     TOKEN_TYPE_FIELD,
@@ -84,6 +91,7 @@ async def get_payload_from_token(token: str = Depends(oauth2_schemas)) -> dict:
 async def get_user_payload(
     payload: dict = Depends(get_payload_from_token),
     session: AsyncSession = Depends(get_db),
+    cache: CacheService = Depends(_get_cached),
 ) -> UserSchemas:
     token_type = payload.get(TOKEN_TYPE_FIELD)
     if token_type != ACCESS_TOKEN_FIELD:
@@ -92,24 +100,42 @@ async def get_user_payload(
             detail=f"Invalid token type - {token_type!r} except {ACCESS_TOKEN_FIELD!r}",
         )
     username: str | None = payload.get("username")
+
+    cached_user = await cache.get(CacheKeys.user(username))
+    if cached_user:
+        return UserSchemas(**cached_user)
+
     result = await session.execute(select(User).where(User.username == username))
     user = result.scalar_one_or_none()
     if not user:
         raise UNAUTHED_EXCEPT
 
-    return UserSchemas.model_validate(user)
+    user_schema = UserSchemas.model_validate(user)
+
+    await cache.set(
+        CacheKeys.user(username), user_schema.model_dump().items(), CacheTTL.USER
+    )
+    return user_schema
 
 
-async def get_check_user_activity(user: UserSchemas = Depends(get_user_payload)):
+async def get_check_user_activity(
+    user: UserSchemas = Depends(get_user_payload),
+    cache: CacheService = Depends(_get_cached),
+):
     if not user.is_activity:
+        await invalidate_user_cache(user.username)
         raise FORBIDDEN_EXCEPT
     return user
 
 
 @router.post("/login", response_model=TokenInfo)
-async def login_user(user: UserSchemas = Depends(get_user)):
+async def login_user(
+    user: UserSchemas = Depends(get_user), cache: CacheService = Depends(_get_cached)
+):
     access_token = create_access_token(user)
     refres_token = create_refresh_token(user)
+
+    await cache.set(CacheKeys.user(user.username), user.model_dump(), CacheTTL.USER)
 
     return TokenInfo(
         access_token=access_token,
@@ -155,20 +181,39 @@ async def register_user(
     user_schema = UserSchemas.model_validate(new_user)
     await cache.set(CacheKeys.user(username), user_schema.model_dump(), CacheTTL.USER)
 
+    await invalidate_users_list_cache()
+
     return user_schema
 
 
 @router.post("/refresh", response_model=TokenInfo, response_model_exclude_none=True)
-async def get_refresh_token(user: UserSchemas = Depends(get_user_auth_for_refresh)):
+async def get_refresh_token(
+    user: UserSchemas = Depends(get_user_auth_for_refresh),
+    cache: CacheService = Depends(_get_cached),
+):
     access_token = create_access_token(user)
+
+    await cache.set(CacheKeys.user(user.username), user.model_dump(), CacheTTL.USER)
+
     return TokenInfo(
         access_token=access_token,
     )
 
 
 @router.get("/users/me")
-@cache(expire=CacheTTL.USER)
-async def getting_for_me(user: UserSchemas = Depends(get_check_user_activity)):
+async def getting_for_me(
+    user: UserSchemas = Depends(get_check_user_activity),
+    cache: CacheService = Depends(_get_cached),
+):
+    cached_user = await cache.get(CacheKeys.user(user.username))
+
+    if cached_user:
+        return {
+            "username": cached_user["username"],
+            "email": cached_user["email"],
+            "is_activity": True,
+        }
+
     return {
         "username": user.username,
         "email": user.email,
@@ -179,9 +224,11 @@ async def getting_for_me(user: UserSchemas = Depends(get_check_user_activity)):
 @router.post("/logout")
 async def logout(
     user: UserSchemas = Depends(get_check_user_activity),
-    cache=Depends(_get_cached),
+    cache: CacheService = Depends(_get_cached),
 ):
     await invalidate_user_cache(user.username)
+    await cache.delete(CacheKeys.user_balance(user.username))
+
     return {"msg": "Logged out successfully"}
 
 
