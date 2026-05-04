@@ -26,63 +26,9 @@ from book_service.cache import (
 )
 
 router = APIRouter(
-    prefix="/book",
+    prefix="/books",
     tags=["Book 📚"],
 )
-
-
-@router.post(
-    "/create_book", response_model=BookCreate, status_code=status.HTTP_201_CREATED
-)
-async def create_book(
-    book_data: BookCreate,
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
-) -> BookCreate:
-    if book_data.isbn:
-        existing_book = await session.execute(
-            select(Book).where(Book.isbn == book_data.isbn)
-        )
-        if existing_book.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Book with this ISBN already exist",
-            )
-
-    new_book = Book(**book_data.model_dump())
-
-    session.add(new_book)
-    await session.commit()
-    await session.refresh(new_book)
-
-    await invalidate_book_list_cache()
-    await invalidate_book_popular_list_cache()
-
-    return new_book
-
-
-@router.get("/books/{book_id}", response_model=BookResponse)
-async def getter_book_for_id(
-    book_id: int,
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
-) -> BookResponse:
-
-    async def get_book_from_db():
-        book = await session.get(Book, book_id)
-
-        if not book:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Book - {book_id} not found",
-            )
-        return book
-
-    return await cache.get_or_set(
-        CacheKeys.book(book_id),
-        get_book_from_db,
-        CacheTTL.BOOK,
-    )
 
 
 @router.get("/books", response_model=List[BookResponse])
@@ -124,49 +70,7 @@ async def list_books(
     )
 
 
-@router.put("/books/{book_id}", response_model=BookResponse)
-async def update_book(
-    book_id: int, book_data: BookCreate, session: AsyncSession = Depends(get_db)
-) -> BookResponse:
-    book = await session.get(Book, book_id)
-
-    if not book:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Book - {book_id} not found"
-        )
-
-    for key, value in book_data.model_dump().items():
-        setattr(book, key, value)
-
-    await session.commit()
-    await session.refresh(book)
-
-    await invalidate_book_cache(book_id)
-    await invalidate_book_list_cache()
-    await invalidate_book_popular_list_cache()
-
-    return book
-
-
-@router.delete("/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_book(book_id: int, session: AsyncSession = Depends(get_db)):
-    book = await session.get(Book, book_id)
-
-    if not book:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Book - {book_id} not found"
-        )
-    await session.delete(book)
-    await session.commit()
-
-    await invalidate_book_cache(book_id)
-    await invalidate_book_list_cache()
-    await invalidate_book_popular_list_cache()
-
-    return None
-
-
-@router.get("/popular_books", response_model=List[BookBriefSchema])
+@router.get("/popular", response_model=List[BookBriefSchema])
 @cache(expire=CacheTTL.BOOK_LIST)
 async def getter_popular_books(
     session: AsyncSession = Depends(get_db),
