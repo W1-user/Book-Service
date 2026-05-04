@@ -52,7 +52,7 @@ class CacheKeys:
 
     @staticmethod
     def user_by_id(user_id: int) -> str:
-        return CacheKeys._key(CacheKeys.ENTITY_USER, user_id)
+        return f"{CacheKeys.ENTITY_USER}:id:{user_id}"
 
     @staticmethod
     def user_balance(username: str) -> str:
