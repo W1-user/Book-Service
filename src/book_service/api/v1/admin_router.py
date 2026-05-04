@@ -182,6 +182,9 @@ async def delete_book(book_id: int, session: AsyncSession = Depends(get_db)):
     return None
 
 
+# Redis/Cache
+
+
 @router.delete("/cache")
 async def cache_delete(cache: CacheService = Depends(_get_cached)):
     await cache.delete_pattern("*")

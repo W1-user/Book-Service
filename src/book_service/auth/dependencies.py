@@ -1,5 +1,4 @@
-# auth/dependencies.py
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Form
 from fastapi.security import HTTPBearer, OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -10,7 +9,13 @@ from book_service.models.user import User
 from book_service.schemas.users import UserSchemas
 from book_service.auth import auth
 from book_service.auth.helpers import TOKEN_TYPE_FIELD, ACCESS_TOKEN_FIELD
-from book_service.cache import _get_cached, CacheService, CacheKeys, CacheTTL
+from book_service.cache import (
+    _get_cached,
+    CacheService,
+    CacheKeys,
+    CacheTTL,
+    invalidate_user_cache,
+)
 
 UNAUTHED_EXCEPT = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -28,7 +33,7 @@ BAD_EXCEPT = HTTPException(
     detail="User with this email or username already exist",
 )
 
-oauth2_schemas = OAuth2PasswordBearer(tokenUrl="/authorization/login", auto_error=False)
+oauth2_schemas = OAuth2PasswordBearer(tokenUrl="api/v1/users/login", auto_error=False)
 http_bearer = HTTPBearer(auto_error=False)
 
 

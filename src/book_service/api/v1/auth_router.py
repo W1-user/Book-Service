@@ -1,27 +1,25 @@
-from fastapi import (
-    APIRouter,
-    HTTPException,
-    status,
-    Depends,
-    Form,
-)
-from fastapi_cache.decorator import cache
-from sqlalchemy import select, delete, update
+from fastapi import APIRouter, HTTPException, status, Depends, Form
+from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from jwt import InvalidTokenError
+
+from book_service.auth.dependencies import http_bearer
+from book_service.schemas.users import UserSchemas, UserCreate, TokenInfo
+from book_service.auth.validation import get_user_auth_for_refresh
+from book_service.database import get_db
+from book_service.models.user import User
+from book_service.auth import auth
 
 from book_service.auth.dependencies import (
     UNAUTHED_EXCEPT,
     FORBIDDEN_EXCEPT,
     BAD_EXCEPT,
+    TOKEN_TYPE_FIELD,
+    ACCESS_TOKEN_FIELD,
     oauth2_schemas,
     http_bearer,
 )
-from book_service.auth import auth
-from book_service.models.user import User
-from book_service.schemas.users import UserSchemas, UserCreate, TokenInfo
-from book_service.database import get_db
-from book_service.auth.validation import get_user_auth_for_refresh
 
 from book_service.cache import (
     _get_cached,
@@ -32,12 +30,7 @@ from book_service.cache import (
     invalidate_users_list_cache,
 )
 
-from book_service.auth.helpers import (
-    TOKEN_TYPE_FIELD,
-    ACCESS_TOKEN_FIELD,
-    create_access_token,
-    create_refresh_token,
-)
+from book_service.auth.helpers import create_access_token, create_refresh_token
 
 router = APIRouter(
     prefix="/authorization",
@@ -200,6 +193,17 @@ async def get_refresh_token(
     )
 
 
+@router.post("/logout")
+async def logout(
+    user: UserSchemas = Depends(get_check_user_activity),
+    cache: CacheService = Depends(_get_cached),
+):
+    await invalidate_user_cache(user.username)
+    await cache.delete(CacheKeys.user_balance(user.username))
+
+    return {"msg": "Logged out successfully"}
+
+
 @router.get("/users/me")
 async def getting_for_me(
     user: UserSchemas = Depends(get_check_user_activity),
@@ -218,34 +222,4 @@ async def getting_for_me(
         "username": user.username,
         "email": user.email,
         "is_activity": True,
-    }
-
-
-@router.post("/logout")
-async def logout(
-    user: UserSchemas = Depends(get_check_user_activity),
-    cache: CacheService = Depends(_get_cached),
-):
-    await invalidate_user_cache(user.username)
-    await cache.delete(CacheKeys.user_balance(user.username))
-
-    return {"msg": "Logged out successfully"}
-
-
-@router.get("/test-cache")
-async def test_cache(cache=Depends(_get_cached)):
-    """Тестовый эндпоинт для проверки работы кэша"""
-    test_key = "test:key"
-    test_value = {"message": "Hello Redis!", "timestamp": "now"}
-
-    # Сохраняем
-    await cache.set(test_key, test_value, expire=60)
-
-    # Читаем
-    result = await cache.get(test_key)
-
-    return {
-        "cached_value": result,
-        "cache_enabled": cache._enabled,
-        "backend_exists": cache._backend is not None,
     }
