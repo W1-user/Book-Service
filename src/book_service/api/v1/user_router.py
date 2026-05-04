@@ -3,6 +3,7 @@ from fastapi import (
     HTTPException,
     status,
     Depends,
+    Query,
 )
 from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,8 +40,10 @@ async def _udpate_user_logic(
     current_user: UserSchemas,
     session: AsyncSession,
     cache: CacheService,
-    dependencies=[Depends(check_user_access)],
 ) -> UserSchemas:
+
+    check_user_access(current_user, user_id)
+
     user = await session.get(User, user_id)
     if not user:
         raise UNAUTHED_EXCEPT
@@ -84,14 +87,18 @@ async def _udpate_user_logic(
     )
 
 
-@router.get(
-    "/{user_id}", response_model=UserResponse, dependencies=[Depends(check_user_access)]
-)
+# User
+
+
+@router.get("/{user_id}", response_model=UserResponse)
 async def get_user_by_id(
     user_id: int,
+    current_user: UserSchemas = Depends(get_check_user_activity),
     session: AsyncSession = Depends(get_db),
     cache: CacheService = Depends(_get_cached),
 ):
+    check_user_access(current_user, user_id)
+
     async def get_user_from_db():
         user = await session.get(User, user_id)
         if not user:
@@ -106,7 +113,6 @@ async def get_user_by_id(
     )
 
     return UserResponse(
-        user_id=user.user_id,
         username=user.username,
         email=user.email,
         first_name=user.first_name,
@@ -115,9 +121,7 @@ async def get_user_by_id(
     )
 
 
-@router.put(
-    "/{user_id}", response_model=UserSchemas, dependencies=[Depends(check_user_access)]
-)
+@router.put("/{user_id}", response_model=UserSchemas)
 async def update_user(
     user_id: int,
     user_data: UserUpdate,
@@ -125,19 +129,22 @@ async def update_user(
     session: AsyncSession = Depends(get_db),
     cache: CacheService = Depends(_get_cached),
 ) -> UserSchemas:
+
     return await _udpate_user_logic(user_id, user_data, current_user, session, cache)
 
 
 @router.delete(
     "/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(check_user_access)],
 )
 async def delete_user(
     user_id: int,
+    current_user: UserSchemas = Depends(get_check_user_activity),
     session: AsyncSession = Depends(get_db),
     cache: CacheService = Depends(_get_cached),
 ):
+
+    check_user_access(current_user, user_id)
 
     user = await session.get(User, user_id)
     if not user:
@@ -153,3 +160,74 @@ async def delete_user(
     await cache.delete_pattern("users:list:*")
 
     return None
+
+
+# User + balance
+
+
+@router.put(
+    "/{user_id}/balance",
+    response_model=UserSchemas,
+)
+async def update_balance(
+    user_id: int,
+    current_user: UserSchemas = Depends(get_check_user_activity),
+    amount: float = Query(..., ge=0, description="New balance amount"),
+    session: AsyncSession = Depends(get_db),
+    cache: CacheService = Depends(_get_cached),
+) -> UserSchemas:
+
+    check_user_access(current_user, user_id)
+
+    user = await session.get(User, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with id {user_id} not found",
+        )
+
+    user.balance = amount
+    await session.commit()
+    await session.refresh(user)
+
+    await invalidate_user_cache(user.username)
+    await cache.delete(CacheKeys.user_by_id(user_id))
+    await cache.delete(CacheKeys.user_balance(user.username))
+
+    return UserSchemas(
+        user_id=user.user_id,
+        username=user.username,
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        balance=user.balance,
+        is_activity=user.is_activity,
+        is_moderator=user.is_moderator,
+        is_admin=user.is_admin,
+    )
+
+
+@router.get("/{user_id}/balance")
+async def get_balance(
+    user_id: int,
+    current_user: UserSchemas = Depends(get_check_user_activity),
+    session: AsyncSession = Depends(get_db),
+    cache: CacheService = Depends(_get_cached),
+):
+
+    check_user_access(current_user, user_id)
+
+    async def get_balance_from_db():
+        user = await session.get(User, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User with id {user_id} not found",
+            )
+        return {"balance": user.balance}
+
+    return await cache.get_or_set(
+        CacheKeys.user_balance(current_user.username),
+        get_balance_from_db,
+        CacheTTL.BALANCE,
+    )
