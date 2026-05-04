@@ -51,6 +51,10 @@ class CacheKeys:
         return CacheKeys._key(CacheKeys.ENTITY_BOOK, username)
 
     @staticmethod
+    def user_by_id(user_id: int) -> str:
+        return CacheKeys._key(CacheKeys.ENTITY_USER, user_id)
+
+    @staticmethod
     def user_balance(username: str) -> str:
         return CacheKeys._key(CacheKeys.ENTITY_BALANCE, username)
 
@@ -86,6 +90,7 @@ class CacheTTL:
 
     # Seconds (User)
     USER = 300
+    USER_PROFILE = 60
     BALANCE = 60
     USER_LIST = 60
     TEMP = 30
