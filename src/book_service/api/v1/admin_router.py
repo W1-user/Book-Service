@@ -15,7 +15,13 @@ from book_service.schemas.users import UserSchemas
 from book_service.schemas.books import BookCreate, BookResponse
 from book_service.models.user import User
 from book_service.models.book import Book
-from book_service.auth.dependencies import get_current_admin_user, UNAUTHED_EXCEPT
+from book_service.auth.dependencies import (
+    get_current_admin_user,
+    UNAUTHED_EXCEPT,
+    sessionDep,
+    cacheDep,
+    current_userDep,
+)
 from book_service.cache import (
     _get_cached,
     CacheService,
@@ -38,11 +44,11 @@ router = APIRouter(
 
 @router.get("/users", response_model=List[UserSchemas])
 async def get_all_users(
+    session: sessionDep,
+    cache: cacheDep,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    is_active: bool = None,
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
+    is_active: Optional[bool] = None,
 ):
     query = select(User)
 
@@ -50,7 +56,7 @@ async def get_all_users(
         query = query.where(User.is_activity == is_active)
 
     offset = (page - 1) * limit
-    query = query.offset(offset).limit(limit).order_by(User.id)
+    query = query.offset(offset).limit(limit).order_by(User.user_id)
 
     result = await session.execute(query)
     users = result.scalars().all()
@@ -59,7 +65,10 @@ async def get_all_users(
 
 
 @router.get("/users/{user_id}", response_model=UserSchemas)
-async def get_user_by_id(user_id: int, session: AsyncSession = Depends(get_db)):
+async def get_user_by_id(
+    user_id: int,
+    session: sessionDep,
+):
     user = await session.get(User, user_id)
     if not user:
         raise UNAUTHED_EXCEPT
@@ -68,9 +77,9 @@ async def get_user_by_id(user_id: int, session: AsyncSession = Depends(get_db)):
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user_by_id(
+    session: sessionDep,
+    cache: cacheDep,
     user_id: int,
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
 ):
     user = await session.get(User, user_id)
     if not user:
@@ -90,9 +99,9 @@ async def delete_user_by_id(
     "/create_book", response_model=BookCreate, status_code=status.HTTP_201_CREATED
 )
 async def create_book(
+    session: sessionDep,
+    cache: cacheDep,
     book_data: BookCreate,
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
 ) -> BookCreate:
     if book_data.isbn:
         existing_book = await session.execute(
@@ -118,9 +127,9 @@ async def create_book(
 
 @router.get("/books/{book_id}", response_model=BookResponse)
 async def getter_book_for_id(
+    session: sessionDep,
+    cache: cacheDep,
     book_id: int,
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
 ) -> BookResponse:
 
     async def get_book_from_db():
@@ -142,7 +151,9 @@ async def getter_book_for_id(
 
 @router.put("/books/{book_id}", response_model=BookResponse)
 async def update_book(
-    book_id: int, book_data: BookCreate, session: AsyncSession = Depends(get_db)
+    session: sessionDep,
+    book_id: int,
+    book_data: BookCreate,
 ) -> BookResponse:
     book = await session.get(Book, book_id)
 
@@ -165,7 +176,10 @@ async def update_book(
 
 
 @router.delete("/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_book(book_id: int, session: AsyncSession = Depends(get_db)):
+async def delete_book(
+    session: sessionDep,
+    book_id: int,
+):
     book = await session.get(Book, book_id)
 
     if not book:
@@ -186,23 +200,33 @@ async def delete_book(book_id: int, session: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/cache")
-async def cache_delete(cache: CacheService = Depends(_get_cached)):
+async def cache_delete(cache: cacheDep):
     await cache.delete_pattern("*")
     return {"msg": "Cache clear successfully"}
 
 
-@router.get("/cache/keys")
-async def cache_keys_getter(
-    pattern: str = "*", cache: CacheService = Depends(_get_cached)
-):
-    keys = []
-    async for key in cache._backend.scan_iter(match=pattern):
-        keys.append(key)
-    return {"keys": {keys}, "total": {len(keys)}}
+# @router.get("/cache/keys")
+# async def cache_keys_getter(
+#     cache: cacheDep,
+#     pattern: str = "*",
+# ):
+#     try:
+#         redis_client = cache._backend.redis
 
+#         keys = []
+#         async for key in redis_client.scan_iter(match=pattern):
+#             keys.append(key)
+
+#         return {"keys": {keys}, "total": {len(keys)}}
+    
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=f"Failed to scan keys: {set(e)}"
+#         )
 
 @router.get("/redis/health")
-async def check_redis_health(cache: CacheService = Depends(_get_cached)):
+async def check_redis_health(cache: cacheDep):
     if not cache._enabled or not cache._backend:
         return {
             "status": "❌ disabled",

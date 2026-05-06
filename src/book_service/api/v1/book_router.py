@@ -12,17 +12,20 @@ from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from book_service.database import get_db
-from book_service.schemas.books import BookCreate, BookBriefSchema, BookResponse
+from book_service.schemas.books import BookBriefSchema, BookResponse
 from book_service.models.book import Book
+
+from book_service.auth.dependencies import (
+    sessionDep,
+    cacheDep,
+    current_userDep,
+)
 
 from book_service.cache import (
     CacheKeys,
     CacheTTL,
     CacheService,
     _get_cached,
-    invalidate_book_cache,
-    invalidate_book_list_cache,
-    invalidate_book_popular_list_cache,
 )
 
 router = APIRouter(
@@ -33,12 +36,12 @@ router = APIRouter(
 
 @router.get("/books", response_model=List[BookResponse])
 async def list_books(
+    session: sessionDep,
+    cache: cacheDep,
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(10, ge=1, le=50, description="Items per page"),
     author: Optional[str] = Query(None, description="Filter by author"),
     title: Optional[str] = Query(None, description="Filter by title"),
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
 ) -> List[BookResponse]:
 
     async def get_books_from_db():
@@ -73,8 +76,8 @@ async def list_books(
 @router.get("/popular", response_model=List[BookBriefSchema])
 @cache(expire=CacheTTL.BOOK_LIST)
 async def getter_popular_books(
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
+    session: sessionDep,
+    cache: cacheDep,
 ) -> List[BookBriefSchema]:
 
     async def get_popular_books_from_db():

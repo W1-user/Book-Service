@@ -18,6 +18,9 @@ from book_service.auth.dependencies import (
     FORBIDDEN_EXCEPT,
     BAD_EXCEPT,
     check_user_access,
+    sessionDep,
+    cacheDep,
+    current_userDep,
 )
 
 from book_service.cache import (
@@ -93,9 +96,9 @@ async def _udpate_user_logic(
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user_by_id(
     user_id: int,
-    current_user: UserSchemas = Depends(get_check_user_activity),
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
+    current_user: current_userDep,
+    session: sessionDep,
+    cache: cacheDep,
 ):
     check_user_access(current_user, user_id)
 
@@ -113,6 +116,7 @@ async def get_user_by_id(
     )
 
     return UserResponse(
+        user_id=user.user_id,
         username=user.username,
         email=user.email,
         first_name=user.first_name,
@@ -125,9 +129,9 @@ async def get_user_by_id(
 async def update_user(
     user_id: int,
     user_data: UserUpdate,
-    current_user: UserSchemas = Depends(get_check_user_activity),
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
+    current_user: current_userDep,
+    session: sessionDep,
+    cache: cacheDep,
 ) -> UserSchemas:
 
     return await _udpate_user_logic(user_id, user_data, current_user, session, cache)
@@ -139,9 +143,9 @@ async def update_user(
 )
 async def delete_user(
     user_id: int,
-    current_user: UserSchemas = Depends(get_check_user_activity),
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
+    current_user: current_userDep,
+    session: sessionDep,
+    cache: cacheDep,
 ):
 
     check_user_access(current_user, user_id)
@@ -171,10 +175,10 @@ async def delete_user(
 )
 async def update_balance(
     user_id: int,
-    current_user: UserSchemas = Depends(get_check_user_activity),
+    current_user: current_userDep,
+    session: sessionDep,
+    cache: cacheDep,
     amount: float = Query(..., ge=0, description="New balance amount"),
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
 ) -> UserSchemas:
 
     check_user_access(current_user, user_id)
@@ -210,9 +214,9 @@ async def update_balance(
 @router.get("/{user_id}/balance")
 async def get_balance(
     user_id: int,
-    current_user: UserSchemas = Depends(get_check_user_activity),
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
+    current_user: current_userDep,
+    session: sessionDep,
+    cache: cacheDep,
 ):
 
     check_user_access(current_user, user_id)

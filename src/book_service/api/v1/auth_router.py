@@ -22,6 +22,9 @@ from book_service.auth.dependencies import (
     http_bearer,
     get_user,
     get_check_user_activity,
+    sessionDep,
+    cacheDep,
+    current_userDep,
 )
 
 from book_service.cache import (
@@ -44,7 +47,7 @@ router = APIRouter(
 
 @router.post("/login", response_model=TokenInfo)
 async def login_user(
-    user: UserSchemas = Depends(get_user), cache: CacheService = Depends(_get_cached)
+    cache:cacheDep, user: UserSchemas = Depends(get_user),
 ):
     access_token = create_access_token(user)
     refres_token = create_refresh_token(user)
@@ -62,9 +65,9 @@ async def login_user(
     "/register", response_model=UserSchemas, status_code=status.HTTP_201_CREATED
 )
 async def register_user(
+    session: sessionDep,
+    cache: cacheDep,
     user_data: UserCreate,
-    session: AsyncSession = Depends(get_db),
-    cache=Depends(_get_cached),
 ) -> dict:
     res_username = await session.execute(
         select(User).where(User.username == user_data.username)
@@ -102,8 +105,8 @@ async def register_user(
 
 @router.post("/refresh", response_model=TokenInfo, response_model_exclude_none=True)
 async def get_refresh_token(
+    cache: cacheDep,
     user: UserSchemas = Depends(get_user_auth_for_refresh),
-    cache: CacheService = Depends(_get_cached),
 ):
     access_token = create_access_token(user)
 
@@ -116,8 +119,8 @@ async def get_refresh_token(
 
 @router.post("/logout")
 async def logout(
-    user: UserSchemas = Depends(get_check_user_activity),
-    cache: CacheService = Depends(_get_cached),
+    user: current_userDep,
+    cache: cacheDep,
 ):
     await invalidate_user_cache(user.username)
     await cache.delete(CacheKeys.user_balance(user.username))
