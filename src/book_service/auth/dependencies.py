@@ -1,4 +1,6 @@
-# auth/dependencies.py
+import json
+from typing import Annotated
+
 from fastapi import Depends, HTTPException, status, Form
 from fastapi.security import HTTPBearer, OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +19,9 @@ from book_service.cache import (
     CacheTTL,
     invalidate_user_cache,
 )
+
+sessionDep = Annotated[AsyncSession, Depends(get_db)]
+cacheDep = Annotated[CacheService, Depends(_get_cached)]
 
 UNAUTHED_EXCEPT = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -53,9 +58,9 @@ async def get_payload_from_token(token: str = Depends(oauth2_schemas)) -> dict:
 
 
 async def get_current_user(
+    session: sessionDep,
+    cache: cacheDep,
     payload: dict = Depends(get_payload_from_token),
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
 ) -> UserSchemas:
     token_type = payload.get(TOKEN_TYPE_FIELD)
     if token_type != ACCESS_TOKEN_FIELD:
@@ -85,8 +90,8 @@ async def get_current_user(
 
 
 async def get_current_active_user(
+    cache: cacheDep,
     user: UserSchemas = Depends(get_current_user),
-    cache: CacheService = Depends(_get_cached),
 ) -> UserSchemas:
     if not user.is_activity:
         await cache.delete(CacheKeys.user(user.username))
@@ -94,31 +99,11 @@ async def get_current_active_user(
     return user
 
 
-async def get_current_admin_user(
-    user: UserSchemas = Depends(get_current_active_user),
-) -> UserSchemas:
-    if not hasattr(user, "is_admin") or not user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Admin rights required"
-        )
-    return user
-
-
-def check_user_access(current_user: UserSchemas, target_user_id: int):
-    if current_user.user_id != target_user_id and not getattr(
-        current_user, "is_admin", False
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to access this resource",
-        )
-
-
 async def get_user(
+    session: sessionDep,
+    cache: cacheDep,
     username: str = Form(),
     password: str = Form(),
-    session: AsyncSession = Depends(get_db),
-    cache=Depends(_get_cached),
 ):
     cached_user = await cache.get(CacheKeys.user(username))
     if cached_user:
@@ -157,9 +142,9 @@ async def get_payload_from_token(token: str = Depends(oauth2_schemas)) -> dict:
 
 
 async def get_user_payload(
+    session: sessionDep,
+    cache: cacheDep,
     payload: dict = Depends(get_payload_from_token),
-    session: AsyncSession = Depends(get_db),
-    cache: CacheService = Depends(_get_cached),
 ) -> UserSchemas:
     token_type = payload.get(TOKEN_TYPE_FIELD)
     if token_type != ACCESS_TOKEN_FIELD:
@@ -171,7 +156,9 @@ async def get_user_payload(
 
     cached_user = await cache.get(CacheKeys.user(username))
     if cached_user:
-        return UserSchemas(**cached_user)
+        if isinstance(cached_user, str):
+            cached_user = json.loads(cached_user)
+        return UserSchemas.model_validate(cached_user)
 
     result = await session.execute(select(User).where(User.username == username))
     user = result.scalar_one_or_none()
@@ -181,16 +168,39 @@ async def get_user_payload(
     user_schema = UserSchemas.model_validate(user)
 
     await cache.set(
-        CacheKeys.user(username), user_schema.model_dump().items(), CacheTTL.USER
+        CacheKeys.user(username), user_schema.model_dump(), CacheTTL.USER
     )
     return user_schema
 
 
 async def get_check_user_activity(
+    cache: cacheDep,
     user: UserSchemas = Depends(get_user_payload),
-    cache: CacheService = Depends(_get_cached),
 ):
     if not user.is_activity:
         await invalidate_user_cache(user.username)
         raise FORBIDDEN_EXCEPT
     return user
+
+
+current_userDep = Annotated[UserSchemas, Depends(get_check_user_activity)]
+
+
+async def get_current_admin_user(
+    user: current_userDep,
+) -> UserSchemas:
+    if not hasattr(user, "is_admin") or not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin rights required"
+        )
+    return user
+
+
+def check_user_access(current_user: UserSchemas, target_user_id: int):
+    if current_user.user_id != target_user_id and not getattr(
+        current_user, "is_admin", False
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to access this resource",
+        )
