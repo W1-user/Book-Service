@@ -34,7 +34,7 @@ class UserUpdate(BaseModel):
 
 
 class UserSchemas(BaseModel):
-    user_id: int
+    id: int
     username: Annotated[str, MinLen(3), MaxLen(30)]
     email: EmailStr
     first_name: Annotated[str, MinLen(1), MaxLen(50)]
@@ -49,7 +49,7 @@ class UserSchemas(BaseModel):
 
 
 class UserResponse(BaseModel):
-    user_id: int
+    id: int
     username: Annotated[str, MinLen(3), MaxLen(30)]
     email: EmailStr
     first_name: Annotated[str, MinLen(1), MaxLen(50)]
@@ -61,7 +61,7 @@ class UserResponse(BaseModel):
 
 
 class UserProfile(BaseModel):
-    user_id: int
+    id: int
     username: Annotated[str, MinLen(3), MaxLen(30)]
     email: EmailStr
     first_name: Annotated[str, MinLen(1), MaxLen(50)]

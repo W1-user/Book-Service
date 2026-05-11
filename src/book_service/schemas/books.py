@@ -44,7 +44,7 @@ class BookResponse(BaseModel):
 
 
 class BookBriefSchema(BaseModel):
-    book_id: int
+    id: int
     title: str
     author: str
     price: float
