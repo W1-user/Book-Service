@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+
 from fastapi import (
     APIRouter,
     HTTPException,
@@ -19,6 +20,7 @@ from book_service.models.user import User
 from book_service.models.book import Book
 from book_service.models.review import Review, ReviewLike
 from book_service.schemas.reviews import (
+    ReviewSortBy,
     ReviewBase,
     ReviewCreate,
     ReviewResponse,
@@ -33,6 +35,7 @@ from book_service.schemas.reviews import (
     ReviewReportResponse,
     ReviewExistingResponse,
     ReviewSimpleResponse,
+    RatingDistribution,
 )
 
 router = APIRouter(
@@ -80,7 +83,7 @@ async def get_ratings_distribution(
             Review.is_deleted == False,
             Review.is_approved,
         )
-        .group_by(Review.rating),
+        .group_by(Review.rating)
     )
 
     result = await session.execute(query)
@@ -196,7 +199,8 @@ async def create_review(
     book = await session.get(Book, book_id)
     if not book:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Book is not found!"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Book is not found!",
         )
 
     existing_review_query = select(Review).where(
@@ -210,7 +214,8 @@ async def create_review(
 
     if existing_review:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="You message a review!"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You message a review!",
         )
 
     new_review = Review(
@@ -232,3 +237,87 @@ async def create_review(
     response = await get_review_author_info(session, new_review, current_user.id)
 
     return response
+
+
+@router.get("/book/{book_id}", response_model=ReviewListResponse)
+async def get_book_reviews(
+    session: sessionDep,
+    book_id: int,
+    skip: int = Query(0, ge=0, description="Count skip reviews"),
+    limit: int = Query(20, ge=1, le=100, description="Count reviews in pagination"),
+    sort_by: ReviewSortBy = Query(ReviewSortBy.NEWEST, description="Sort"),
+):
+
+    book = await session.get(Book, book_id)
+    if not book:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Book not found!",
+        )
+
+    query = select(Review).where(
+        Review.book_id == book_id,
+        Review.is_deleted == False,
+        Review.is_approved == True,
+    )
+
+    if sort_by == ReviewSortBy.NEWEST:
+        query = query.order_by(desc(Review.created_at))
+    elif sort_by == ReviewSortBy.OLDEST:
+        query = query.order_by(asc(Review.created_at))
+    elif sort_by == ReviewSortBy.RATING:
+        query = query.order_by(desc(Review.rating))
+    elif sort_by == ReviewSortBy.LIKES:
+        query = query.order_by(desc(Review.likes_count), desc(Review.created_at))
+
+    count_query = select(func.count()).where(
+        Review.book_id == book_id,
+        Review.is_deleted == False,
+        Review.is_approved == True,
+    )
+    count_result = await session.execute(count_query)
+    total = count_result.scalar() or 0
+
+    query = query.offset(skip).limit(limit)
+    result = await session.execute(query)
+    reviews = result.scalars().all()
+
+    reviews_response = []
+    for review in reviews:
+        author = await session.get(User, review.user_id)
+
+        review_response = ReviewResponse(
+            id=review.id,
+            content=review.content,
+            rating=review.rating,
+            likes_count=review.likes_count,
+            is_deleted=review.is_deleted,
+            is_approved=review.is_approved,
+            user_id=review.user_id,
+            book_id=review.book_id,
+            created_at=review.created_at,
+            author=(
+                ReviewAuthorInfo(
+                    id=author.id,
+                    username=author.username,
+                    total_reviews=await get_user_reviews_count(session, author.id),
+                )
+                if author
+                else None
+            ),
+            is_liked_by_current_user=None,
+            is_own_review=False,
+        )
+        reviews_response.append(review_response)
+
+    rating_distribution = await get_ratings_distribution(session, book_id)
+
+    return ReviewListResponse(
+        total=total,
+        reviews=reviews_response,
+        average_rating=round(book.avg_rating or 0, 2),
+        rating_distribution=RatingDistribution.from_dict(rating_distribution),
+        skip=skip,
+        limit=limit,
+        has_more=skip + limit < total,
+    )
