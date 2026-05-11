@@ -27,8 +27,9 @@ class CacheKeys:
 
     ENTITY_USER = "user"
     ENTITY_BALANCE = "balance"
-
     ENTITY_BOOK = "book"
+    ENTITY_REVIEW = "reviews"
+    ENTITY_REVIEW_LIKE = "review_like"
 
     @staticmethod
     def _key(prefix: str, identifier: str) -> str:
@@ -65,6 +66,12 @@ class CacheKeys:
     ) -> str:
         return f"users:list:{page}:{limit}"
 
+    # Review
+
+    @staticmethod
+    def review(review_id: int) -> str:
+        return CacheKeys._key(CacheKeys.ENTITY_REVIEW, f"id:{review_id}")
+
     # Book
 
     @staticmethod
@@ -85,6 +92,30 @@ class CacheKeys:
     def popular_books(limit: int = 10):
         return f"books:popular:{limit}"
 
+    # Review books
+
+    @staticmethod
+    def book_reviews(
+        book_id: int,
+        skip: int = 0,
+        limit: int = 20,
+        sort_by: str = "newest",
+    ) -> str:
+        return f"{CacheKeys.ENTITY_BOOK}:{book_id}:reviews:skip:{skip}:limit:{limit}:sort:{sort_by}"
+
+    @staticmethod
+    def user_reviews(
+        user_id: int,
+        skip: int = 0,
+        limit: int = 0,
+    ) -> str:
+        return f"{CacheKeys.ENTITY_USER}:{user_id}:reviews:skip:{skip}:limit:{limit}"
+
+    @staticmethod
+    def review_likes(
+        review_id: int,
+    ) -> str:
+        return f"{CacheKeys.ENTITY_REVIEW_LIKE}:{review_id}:likes"
 
 class CacheTTL:
 
@@ -100,6 +131,11 @@ class CacheTTL:
     BOOK_LIST = 120
     BOOK_POPULAR = 600
     BOOK_BY_AUTHOR = 300
+
+    # Seconds (Reviews)
+    REVIEW = 600
+    REVIEW_LIST = 300
+    REVIEW_LIKES = 600
 
 
 class CacheService:
@@ -206,6 +242,43 @@ async def invalidate_book_list_cache():
 
 async def invalidate_book_popular_list_cache():
     await _cache_service.delete_pattern("books:popular:*")
+
+
+# Invalidate review cache
+
+
+async def invalidate_review_cache(review_id):
+    await _cache_service.delete(CacheKeys.review(review_id))
+
+
+async def invalidate_book_reviews_cache(book_id: int):
+    pattern = f"{CacheKeys.ENTITY_BOOK}:{book_id}:reviews:*"
+    await _cache_service.delete_pattern(pattern)
+
+
+async def invalidate_user_reviews_cache(user_id):
+    pattern = f"{CacheKeys.ENTITY_USER}:{user_id}:reviews:*"
+    await _cache_service.delete_pattern(pattern)
+
+
+async def invalidate_review_likes_cache(review_id):
+    await _cache_service.delete(CacheKeys.review_likes(review_id))
+
+
+async def invalidate_all_review_cache(
+        book_id: int,
+        user_id: int,
+        review_id: int,
+):
+    if review_id:
+        await _cache_service.delete(CacheKeys.review(review_id))
+        await _cache_service.delete(CacheKeys.review_likes(review_id))
+    
+    if user_id:
+        await invalidate_user_reviews_cache(user_id)
+
+    if book_id:
+        await invalidate_book_reviews_cache(book_id)
 
 
 async def init_cache(redis_client: Redis):
