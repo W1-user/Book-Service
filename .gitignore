@@ -6,14 +6,20 @@ __pycache__/
 .coverage
 htmlcov/
 
+
 # Poetry
 .poetry/
 
+
 # Environment
 .env
+.env.local
+.env.*.local
+secrets/
 .venv/
 env/
 venv/
+
 
 # IDE
 .vscode/
@@ -23,8 +29,20 @@ venv/
 # Keys (важно!)
 **/certs/private-key.pem
 
+
 # Logs
 *.log
 
+
 # OS
 .DS_Store
+
+# Локальные изменения конфигурации Compose
+docker-compose.override.yml
+docker-compose.override.yaml
+
+
+# Данные баз данных и временные файлы
+data/
+volumes/
+*.log
