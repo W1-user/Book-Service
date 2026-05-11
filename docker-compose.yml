@@ -5,3 +5,22 @@ services:
     ports:
       - "6379:6379"
       
+  db:
+    image: postgres:17-alpine
+    container_name: Book-service
+
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Javagg228
+      POSTGRES_DB: BookServ
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
