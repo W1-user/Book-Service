@@ -53,7 +53,7 @@ async def list_books(
             query = query.where(Book.title.ilike(f"%{title}%"))
 
         offset = (page - 1) * limit
-        query = query.offset(offset).limit(limit).order_by(Book.book_id)
+        query = query.offset(offset).limit(limit).order_by(Book.id)
 
         result = await session.execute(query)
         books = result.scalars().all()

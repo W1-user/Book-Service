@@ -45,7 +45,6 @@ router = APIRouter(
 @router.get("/users", response_model=List[UserSchemas])
 async def get_all_users(
     session: sessionDep,
-    cache: cacheDep,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     is_active: Optional[bool] = None,
@@ -56,7 +55,7 @@ async def get_all_users(
         query = query.where(User.is_activity == is_active)
 
     offset = (page - 1) * limit
-    query = query.offset(offset).limit(limit).order_by(User.user_id)
+    query = query.offset(offset).limit(limit).order_by(User.id)
 
     result = await session.execute(query)
     users = result.scalars().all()
@@ -78,7 +77,6 @@ async def get_user_by_id(
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user_by_id(
     session: sessionDep,
-    cache: cacheDep,
     user_id: int,
 ):
     user = await session.get(User, user_id)
@@ -96,11 +94,10 @@ async def delete_user_by_id(
 
 
 @router.post(
-    "/create_book", response_model=BookCreate, status_code=status.HTTP_201_CREATED
+    "/books/create_book", response_model=BookCreate, status_code=status.HTTP_201_CREATED
 )
 async def create_book(
     session: sessionDep,
-    cache: cacheDep,
     book_data: BookCreate,
 ) -> BookCreate:
     if book_data.isbn:
@@ -218,12 +215,13 @@ async def cache_delete(cache: cacheDep):
 #             keys.append(key)
 
 #         return {"keys": {keys}, "total": {len(keys)}}
-    
+
 #     except Exception as e:
 #         raise HTTPException(
 #             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 #             detail=f"Failed to scan keys: {set(e)}"
 #         )
+
 
 @router.get("/redis/health")
 async def check_redis_health(cache: cacheDep):

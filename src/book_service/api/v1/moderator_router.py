@@ -7,6 +7,5 @@ from fastapi import (
 
 router = APIRouter(
     prefix="/moderator",
-    tags=["Moderator 👨‍⚖️"]
+    tags=["Moderator 👨‍⚖️"],
 )
-

@@ -1,4 +1,3 @@
-
 from fastapi import (
     APIRouter,
     HTTPException,
@@ -47,7 +46,8 @@ router = APIRouter(
 
 @router.post("/login", response_model=TokenInfo)
 async def login_user(
-    cache:cacheDep, user: UserSchemas = Depends(get_user),
+    cache: cacheDep,
+    user: UserSchemas = Depends(get_user),
 ):
     access_token = create_access_token(user)
     refres_token = create_refresh_token(user)
@@ -130,8 +130,8 @@ async def logout(
 
 @router.get("/users/me")
 async def getting_for_me(
-    user: UserSchemas = Depends(get_check_user_activity),
-    cache: CacheService = Depends(_get_cached),
+    user: current_userDep,
+    cache: cacheDep,
 ):
     cached_user = await cache.get(CacheKeys.user(user.username))
 

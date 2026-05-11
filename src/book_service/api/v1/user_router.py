@@ -53,7 +53,7 @@ async def _udpate_user_logic(
 
     update_data = user_data.model_dump(exclude_unset=True)
     if not current_user.is_admin:
-        allowed_fields = ["first_name", "last_name", "email", "password"]
+        allowed_fields = {"first_name", "last_name", "email", "password"}
         forbidden_fields = set(update_data.keys()) - allowed_fields
         if forbidden_fields:
             raise HTTPException(
@@ -78,7 +78,7 @@ async def _udpate_user_logic(
     await cache.delete_pattern("users:list:*")
 
     return UserSchemas(
-        user_id=user.user_id,
+        id=user.id,
         username=user.username,
         email=user.email,
         first_name=user.first_name,
@@ -116,7 +116,7 @@ async def get_user_by_id(
     )
 
     return UserResponse(
-        user_id=user.user_id,
+        id=user.id,
         username=user.username,
         email=user.email,
         first_name=user.first_name,
@@ -126,6 +126,18 @@ async def get_user_by_id(
 
 
 @router.put("/{user_id}", response_model=UserSchemas)
+async def update_user(
+    user_id: int,
+    user_data: UserUpdate,
+    current_user: current_userDep,
+    session: sessionDep,
+    cache: cacheDep,
+) -> UserSchemas:
+
+    return await _udpate_user_logic(user_id, user_data, current_user, session, cache)
+
+
+@router.patch("/{user_id}", response_model=UserSchemas)
 async def update_user(
     user_id: int,
     user_data: UserUpdate,
@@ -199,7 +211,7 @@ async def update_balance(
     await cache.delete(CacheKeys.user_balance(user.username))
 
     return UserSchemas(
-        user_id=user.user_id,
+        id=user.id,
         username=user.username,
         email=user.email,
         first_name=user.first_name,
