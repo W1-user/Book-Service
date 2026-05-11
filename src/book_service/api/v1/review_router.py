@@ -14,11 +14,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from book_service.auth.dependencies import (
     sessionDep,
     current_userDep,
+    cacheDep,
 )
 
 from book_service.models.user import User
 from book_service.models.book import Book
 from book_service.models.review import Review, ReviewLike
+from book_service.cache import (
+    CacheKeys,
+    CacheService,
+    CacheTTL,
+    invalidate_review_cache,
+    invalidate_user_reviews_cache,
+    invalidate_book_reviews_cache,
+    invalidate_all_review_cache,
+)
 from book_service.schemas.reviews import (
     ReviewSortBy,
     ReviewBase,
@@ -242,11 +252,18 @@ async def create_review(
 @router.get("/book/{book_id}", response_model=ReviewListResponse)
 async def get_book_reviews(
     session: sessionDep,
+    cache: cacheDep,
     book_id: int,
     skip: int = Query(0, ge=0, description="Count skip reviews"),
     limit: int = Query(20, ge=1, le=100, description="Count reviews in pagination"),
     sort_by: ReviewSortBy = Query(ReviewSortBy.NEWEST, description="Sort"),
 ):
+
+    cache_key = CacheKeys.book_reviews(book_id, skip, limit, sort_by.value)
+    cache_result = await cache.get(cache_key)
+
+    if cache_result:
+        return ReviewListResponse(**cache_result)
 
     book = await session.get(Book, book_id)
     if not book:
@@ -310,13 +327,32 @@ async def get_book_reviews(
         )
         reviews_response.append(review_response)
 
-    rating_distribution = await get_ratings_distribution(session, book_id)
+    distribution_dict = await get_ratings_distribution(session, book_id)
+    rating_distribution = RatingDistribution(
+        rating_1=distribution_dict.get(1, 0),
+        rating_2=distribution_dict.get(2, 0),
+        rating_3=distribution_dict.get(3, 0),
+        rating_4=distribution_dict.get(4, 0),
+        rating_5=distribution_dict.get(5, 0),
+    )
+
+    result_data = {
+        "total": total,
+        "reviews": [r.model_dump() for r in reviews_response],
+        "average_rating": round(book.avg_rating or 0, 2),
+        "rating_distribution": rating_distribution.model_dump(),
+        "skip": skip,
+        "limit": limit,
+        "has_more": skip + limit < total,
+    }
+
+    await cache.set(cache_key, result_data, expire=CacheTTL.REVIEW_LIST)
 
     return ReviewListResponse(
         total=total,
         reviews=reviews_response,
         average_rating=round(book.avg_rating or 0, 2),
-        rating_distribution=RatingDistribution.from_dict(rating_distribution),
+        rating_distribution=rating_distribution,
         skip=skip,
         limit=limit,
         has_more=skip + limit < total,
