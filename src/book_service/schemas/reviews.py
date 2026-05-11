@@ -8,6 +8,13 @@ from enum import Enum
 # Enums
 
 
+class ReviewSortBy(str, Enum):
+    NEWEST = "newest"
+    OLDEST = "oldest"
+    RATING = "rating"
+    LIKES = "likes"
+
+
 class ReviewModerationAction(str, Enum):
     APPROVE = "approve"
     REJECT = "reject"
@@ -49,7 +56,7 @@ class ReviewCreate(ReviewBase):
 
 
 class ReviewAuthorInfo(BaseModel):
-    user_id: int
+    id: int
     username: Annotated[str, MinLen(3), MaxLen(30)]
     # avatar_url
     total_reviews: int = 0
@@ -109,6 +116,16 @@ class RatingDistribution(BaseModel):
             + self.rating_5 * 5
         )
         return round(total_score / self.total, 2)
+
+    @classmethod
+    def from_dict(cls, distribution: Dict[int, int]) -> "RatingDistribution":
+        return cls(
+            rating_1=distribution.get(1, 0),
+            rating_2=distribution.get(2, 0),
+            rating_3=distribution.get(3, 0),
+            rating_4=distribution.get(4, 0),
+            rating_5=distribution.get(5, 0),
+        )
 
 
 # List Responses
