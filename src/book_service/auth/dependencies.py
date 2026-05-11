@@ -167,9 +167,7 @@ async def get_user_payload(
 
     user_schema = UserSchemas.model_validate(user)
 
-    await cache.set(
-        CacheKeys.user(username), user_schema.model_dump(), CacheTTL.USER
-    )
+    await cache.set(CacheKeys.user(username), user_schema.model_dump(), CacheTTL.USER)
     return user_schema
 
 
@@ -197,7 +195,7 @@ async def get_current_admin_user(
 
 
 def check_user_access(current_user: UserSchemas, target_user_id: int):
-    if current_user.user_id != target_user_id and not getattr(
+    if current_user.id != target_user_id and not getattr(
         current_user, "is_admin", False
     ):
         raise HTTPException(
