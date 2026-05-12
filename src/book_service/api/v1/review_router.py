@@ -357,3 +357,68 @@ async def get_book_reviews(
         limit=limit,
         has_more=skip + limit < total,
     )
+
+
+@router.get("/{review_id}", response_model=ReviewResponse)
+async def get_review(
+    session: sessionDep,
+    cache: cacheDep,
+    review_id: int,
+    current_user: current_userDep | None = None,
+):
+    cache_key = CacheKeys.review(review_id)
+    cache_result = await cache.get(cache_key)
+
+    if cache_result and isinstance(cache_result, dict):
+        try:
+            cache_user_id = cache_result.get("cached_for_user_id")
+
+            if current_user is None or cache_user_id == current_user.id:
+                return ReviewResponse(**cache_result["data"])
+        except Exception as e:
+            pass
+
+    review = await session.get(Review, review_id)
+
+    if not review or review.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Review not found!"
+        )
+    
+    if not review.is_approved:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Review not found!"
+        )
+    
+    author = await session.get(User, review.user_id)
+
+    response = ReviewResponse(
+        id=review.id,
+        content=review.content,
+        rating=review.rating,
+        likes_count=review.likes_count,
+        is_deleted=review.is_deleted,
+        is_approved=review.is_approved,
+        user_id=review.user_id,
+        book_id=review.book_id,
+        created_at=review.created_at,
+        author=ReviewAuthorInfo(
+            id=author.id,
+            username=author.username,
+            total_reviews=await get_user_reviews_count(session, author.id)
+        ) if author else None,
+        is_liked_by_current_user=None,
+        is_own_review=False
+    )
+
+    cache_data = {
+        "data": response.model_dump(),
+        "cache_user_id": current_user.id if current_user else None,
+        "likes_count": review.likes_count,
+    }
+    
+    await cache.set(cache_key, cache_data, expire=CacheTTL.REVIEW)
+
+    return response
